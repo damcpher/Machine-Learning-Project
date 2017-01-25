@@ -1,0 +1,67 @@
+---
+title: "Final Project - Machine Learning"
+author: "Duncan McPherson"
+date: "January 24, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning =  FALSE)
+library(caret)
+```
+
+To begin, I loaded up the training data into R and split it into two pieces: a 50% training set, and a 50% test set for cross validation before applying it to the ultimate test set. I removed variables that were columns of NA or blank.
+
+```{r}
+read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv") -> alldata
+InTrain=createDataPartition(alldata$X, p=0.5, list = FALSE)
+testing=alldata[-InTrain,]
+training=alldata[InTrain,]
+newdata = read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+
+training[,!is.na(training[1,])] -> training.nona
+training.nona[,(training.nona[1,]) != ""] -> training.nona
+training.nona=training.nona[,-1]
+testing[,!is.na(testing[1,])] -> testing.nona
+testing.nona[,(testing.nona[1,]) != ""] -> testing.nona
+testing.nona=testing.nona[,-1]
+```
+
+First I did Linear Discriminate Analysis. This did not turn out so great, with an accuracy of less than 90% when applied to the cross-validation set.
+```{r, cache=TRUE}
+train(classe~., method="lda", data=training.nona) -> LDAModel
+predict(LDAModel, testing.nona) -> LDAPreds
+confusionMatrix(LDAPreds, testing.nona$classe)
+```
+
+Therefore, I resolved to make a Random Forest. A random forest is a mathematical agglomeration of many decision trees. I have made one below so you can see an example of the trees that make up the forest.
+```{r}
+train(classe~., method="rpart", data=training.nona) -> OneTreeModel
+plot(OneTreeModel$finalModel, uniform = TRUE, margin = 0.02)
+text(OneTreeModel$finalModel, cex = 0.6)
+```
+
+Then I made the Random Forest. My computer was not happy iterating over so much data hundreds of times, but the end result was a Random Forest with over 99% accuracy! This would make my out of sample error rate less than 1%.
+```{r, cache = TRUE}
+train(classe~., method="rf", data=training.nona) -> RFModel
+predict(RFModel, testing.nona) -> CrossValPred
+confusionMatrix(CrossValPred, testing.nona$classe)
+```
+
+I predicted the ultimate test data, which I here called newdata, with this model. I plugged these into the Course Prediction Quiz and got 100% accuracy.
+
+```{r}
+predict(RFModel, newdata)
+```
+
+I also identified the important elements for this highly accurate model using VarImp and made a barplot of the top features:
+```{r}
+varImp(RFModel) -> Important.Things
+Important.Things = data.frame(Features = rownames(Important.Things[[1]]), Score = Important.Things[[1]]$Overall)
+Important.Things[Important.Things$Score>quantile(Important.Things$Score,0.9),] -> Important.Things
+Important.Things[order(Important.Things$Score, decreasing = TRUE),] -> Important.Things
+
+par(mar = c(5,10,4,2))
+barplot(Important.Things$Score, names.arg = Important.Things$Features, horiz= TRUE, las = 2)
+```
